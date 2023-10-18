@@ -45,9 +45,7 @@ class spm_model:
 
     polygons: dict[str, np.ndarray] = {
         "circle":       np.array([[math.cos(x), math.sin(x)] for x in np.linspace(0,2*np.pi,20,endpoint=False)]),
-        "elipse":       np.array([(2*math.cos(x), math.sin(x)) for x in np.linspace(0,2*np.pi,20,endpoint=False)]),
-        "square":       np.array([(1,1), (-1,1), (-1,-1), (1,-1)]),
-        "rectangle":    np.array([(2,1), (-2,1), (-2,-1), (2,-1)])
+        "square":       np.array([(1,1), (-1,1), (-1,-1), (1,-1)])
         }
 
 
