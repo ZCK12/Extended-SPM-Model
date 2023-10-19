@@ -237,4 +237,6 @@ for i in range(100000):
         # Show the plot
         plt.show()
         if input() == "stop":
+            pass
             break
+
