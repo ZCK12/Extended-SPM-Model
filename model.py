@@ -1,13 +1,18 @@
 import math
 import numpy as np
+import matplotlib.pyplot as plt
+import random
+
 from numpy.typing import ArrayLike
 from typing import NewType, Tuple
 from matplotlib.path import Path
 
+
+
 # Polygon object used to define boundary of the model surface
 # The polygon object should be an array of tuples shape (N,2) with
 # coordinates that define a closed polygon in R2 space.
-Polygon = NewType("Polygon", ArrayLike[int])
+Polygon = NewType("Polygon", np.ndarray[np.uint16])
 
 
 class spm_model:
@@ -44,17 +49,18 @@ class spm_model:
     """
 
     polygons: dict[str, np.ndarray] = {
-        "circle":       np.array([[math.cos(x), math.sin(x)] for x in np.linspace(0,2*np.pi,20,endpoint=False)]),
-        "square":       np.array([(1,1), (-1,1), (-1,-1), (1,-1)])
+        "circle":       np.array([[math.cos(x), math.sin(x)] for x in np.linspace(0,2*np.pi,65,endpoint=True)]),
+        "square":       np.array([(1,1), (-1,1), (-1,-1), (1,-1)], dtype=np.float64)
         }
 
 
-    def __init__(self, surface_boundary: Polygon | str, width: int, height: int):
+    def __init__(self, surface_boundary: Polygon | str, width: int, height: int, topple_height: int=4):
         self.width = width
         self.height = height
+        self.topple_height = topple_height
 
         # Type checking the surface_boundary variable
-        if not isinstance(surface_boundary, (Polygon, str)):
+        if not isinstance(surface_boundary, (np.ndarray, str)):
             raise TypeError("Surface boundary argument must be of type Polygon or String")
 
         # If the provided surface boundary is a string, then it should reference
@@ -83,14 +89,14 @@ class spm_model:
         surface_boundary = self.__transform_polygon(surface_boundary, self.width-2, self.height-2)
 
         # We use this new scaled polygon to define a closed path for rasterising with.
-        surface_path = Path(surface_boundary, closed=True)
+        surface_path = Path(surface_boundary, closed=False)
 
         # Now we can finally rasterise our simulation surface using the polygon path (with a 1 unit buffer zone)]
         # The spm_matrix is an ndarray of booleans that indicate whether a given cell within our simulation surface or not.
         self.raster_matrix = self.__rasterize_path(surface_path, self.width, self.height)
 
         # The cellular_matrix is used for running the Sand Pile Model, and contains the pile height in each cell.
-        self.cellular_matrix = np.zeros((width, height), dtype=np.uint8)
+        self.cellular_matrix = np.zeros((width, height), dtype=np.uint16)
         self.condition_matrix = None # TODO implement condition_matrix and interactions
 
 
@@ -150,3 +156,85 @@ class spm_model:
                     raster[x+1, y+1] = True
 
         return raster
+
+
+    def resolve_topples(self, topple_cell_set: set[tuple[int, int]]=None):
+        """
+        Process the cellular_matrix to resolve any unstable cells, where instability is defined by a cell's
+        value being greater than or equal to the topple_height. An unstable cell will distribute its
+        excess value to its four neighboring cells (up, down, left, and right). This process is repeated
+        iteratively until all cells in the cellular_matrix are stable.
+        """
+        # Create a set (unordered, unique) of all the cells that are required to be toppled initially
+        if topple_cell_set == None:
+            topple_cell_set = set()
+            for x_pos in range(self.width):
+                for y_pos in range(self.height):
+                    # Only cells that are inside our boundary are considered for toppling.
+                    if (self.cellular_matrix[x_pos, y_pos] >= self.topple_height) and self.raster_matrix[x_pos, y_pos]:
+                        topple_cell_set.add((x_pos, y_pos))
+        else:
+            # If a set is provided, then it must not be empty.
+            assert len(topple_cell_set) > 0
+
+        # Topple the matrix cell by cell, pushing new toppled cells to the stack
+        while len(topple_cell_set) > 0:
+            coord = topple_cell_set.pop()
+
+            # Loops for as long as the current cell is unstable
+            while self.cellular_matrix[coord] >= self.topple_height:
+                self.cellular_matrix[coord] -= 4
+                # Computes adjacent cell by adding an X and Y offset
+                for dx, dy in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
+                    adj_coord = (coord[0] + dx, coord[1] + dy)
+                    self.cellular_matrix[adj_coord] += 1
+                    # If the cell in question is unstable and is a valid interior cell, then it is added to the topple set.
+                    if self.cellular_matrix[adj_coord] >= self.topple_height and self.raster_matrix[adj_coord]:
+                        topple_cell_set.add(adj_coord)
+
+        # If the set is empty, then the configuration is stable
+        return
+
+
+    def add_sand(self, coord: tuple[int, int], amount=1) -> bool:
+        """
+        Add a specified amount of sand to the cell at the given coordinates and resolve any resulting toppling. If the
+        target cell is outside the boundary area, an IndexError is raised. If the sand addition results in the cell becoming
+        unstable, the resolve_topples method is called to stabilize the cellular_matrix.
+
+        Parameters:
+            coord (tuple[int, int]): The (x, y) coordinates of the target cell in the cellular_matrix.
+            amount (int, optional): The amount of sand to add to the target cell. Default is 1.
+
+        Returns:
+            bool: A boolean representing whether or not cells toppled (and were resolved) as a result of the addition.
+        """
+        if not self.raster_matrix[coord]:
+            raise IndexError(f"Provided coordinate {coord} is outside of the boundary area")
+
+        self.cellular_matrix[coord] += amount
+        if self.cellular_matrix[coord] >= self.topple_height:
+            self.resolve_topples({coord})
+            return True
+
+        return False
+
+
+my_spm = spm_model("circle", 201, 201)
+for i in range(100000):
+    try:
+        my_spm.add_sand((random.randrange(1,200),random.randrange(1,200)), 1)
+    except:
+        pass
+
+    if i%5000 == 0:
+        fig, ax = plt.subplots()
+        cax = ax.imshow(my_spm.raster_matrix, cmap='viridis')
+
+        # Add a color bar
+        cbar = fig.colorbar(cax)
+
+        # Show the plot
+        plt.show()
+        if input() == "stop":
+            break
