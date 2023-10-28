@@ -158,6 +158,29 @@ class spm_model:
         return raster
 
 
+    def directional_size(self, azimuth: float):
+        # Convert azimuth to radians
+        azimuth_rad = np.deg2rad((450 - azimuth) % 360)
+
+        # Initialize min and max projections
+        min_proj = np.inf
+        max_proj = -np.inf
+
+        # Loop through each point in the array
+        for y in range(self.height):
+            for x in range(self.width):
+                if self.raster_matrix[x, y]:
+                    # Calculate projection of point (x, y) on line with azimuth angle
+                    proj = x * np.cos(azimuth_rad) + y * np.sin(azimuth_rad)
+
+                    # Update min and max projections
+                    min_proj = min(min_proj, proj)
+                    max_proj = max(max_proj, proj)
+
+        # Length of the shape in the azimuth direction is the difference between max and min projections
+        return (max_proj - min_proj) + 1 # +1 to account for measurements in the centre of tiles, rather than edges.
+
+
     def resolve_topples(self, topple_cell_set: set[tuple[int, int]]=None):
         """
         Process the cellular_matrix to resolve any unstable cells, where instability is defined by a cell's
@@ -220,7 +243,8 @@ class spm_model:
         return False
 
 
-my_spm = spm_model("circle", 201, 201)
+my_spm = spm_model("circle", 8, 8)
+print(my_spm.directional_size(0))
 for i in range(100000):
     try:
         my_spm.add_sand((random.randrange(1,200),random.randrange(1,200)), 1)
