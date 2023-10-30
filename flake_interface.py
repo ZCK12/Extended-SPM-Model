@@ -11,7 +11,7 @@ import os
 import time
 
 
-def run_flake_simulation(latitude, longitude, lakeDepth, extinctionCoefficient, lakeFetch
+def run_flake_simulation(latitude, longitude, lakeDepth, extinctionCoefficient, lakeFetch,
                          surfaceTemperature=9.44, meanTemperature=9.44, bottomTemperature=9.44,
                          mixedLayerThickness=0, iceThickness=0):
 
@@ -113,7 +113,7 @@ def run_flake_simulation(latitude, longitude, lakeDepth, extinctionCoefficient, 
     max_retries = 8  # 8 retries * 15 seconds = 2 minutes
     retry_interval = 15  # 15 seconds
     for i in range(max_retries):
-        csv_url = f"http://www.flake.igb-berlin.de/model/download-result-file?id={result_id}"
+        csv_url = f"{ORIGIN_URL}/model/download-t-map-data??id={result_id}"
         csv_response = requests.get(csv_url)
 
         # Checks how the server responded to file query

@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike
 from typing import NewType, Tuple
 from matplotlib.path import Path
 
+from flake_interface import run_flake_simulation
 
 
 # Polygon object used to define boundary of the model surface
@@ -243,24 +244,37 @@ class spm_model:
         return False
 
 
-my_spm = spm_model("circle", 8, 8)
-print(my_spm.directional_size(0))
-for i in range(100000):
+
+def csv_to_numpy(filename):
+    """Reads a CSV file and returns its content as a NumPy array."""
     try:
-        my_spm.add_sand((random.randrange(1,200),random.randrange(1,200)), 1)
-    except:
-        pass
+        data = np.genfromtxt(filename, delimiter=',', skip_header=1)
+        return data
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
 
-    if i%5000 == 0:
-        fig, ax = plt.subplots()
-        cax = ax.imshow(my_spm.raster_matrix, cmap='viridis')
 
-        # Add a color bar
-        cbar = fig.colorbar(cax)
+# my_spm = spm_model("circle", 8, 8)
+# print(my_spm.directional_size(0))
+# for i in range(100000):
+#     try:
+#         my_spm.add_sand((random.randrange(1,200),random.randrange(1,200)), 1)
+#     except:
+#         pass
+#
+#     if i%5000 == 0:
+#         fig, ax = plt.subplots()
+#         cax = ax.imshow(my_spm.raster_matrix, cmap='viridis')
+#
+#         # Add a color bar
+#         cbar = fig.colorbar(cax)
+#
+#         # Show the plot
+#         plt.show()
+#         if input() == "stop":
+#             pass
+#             break
 
-        # Show the plot
-        plt.show()
-        if input() == "stop":
-            pass
-            break
-
+num_array = csv_to_numpy(run_flake_simulation(10,11,12,1,100))
+print(num_array.shape)
