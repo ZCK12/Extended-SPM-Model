@@ -1,7 +1,9 @@
 import math
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import random
+from datetime import datetime
 
 from numpy.typing import ArrayLike
 from typing import NewType, Tuple
@@ -246,13 +248,62 @@ class spm_model:
 
 
 def csv_to_numpy(filename):
-    """Reads a CSV file and returns its content as a NumPy array."""
+    """Reads a CSV file and returns its content as a NumPy array with proper data types."""
     try:
-        data = np.genfromtxt(filename, delimiter=',', skip_header=1)
+        # Read the CSV file into a pandas DataFrame
+        df = pd.read_csv(filename, delimiter=',', skiprows=1, header=None)
+
+        # Assuming the datetime is in the first column, depth in the second, and temperature in the third
+        df[0] = pd.to_datetime(df[0], format='%Y/%m/%d %H:%M')  # Parse the datetime strings
+        df[1] = df[1].astype(float)  # Convert depth to float
+        df[2] = df[2].astype(float)  # Convert temperature to float
+
+        # Convert the DataFrame to a NumPy structured array
+        data = df.to_records(index=False)
+
         return data
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
+
+
+
+
+def calculate_thermocline(flake_data):
+    # Assuming flake_data is sorted by date and time
+    thermocline_data = []
+    thermocline_depths = []
+
+    for i in range(0, len(flake_data), 102):  # 102 measurements per day
+        daily_data = flake_data[i:i+101] # Excluding erronious last day
+        noon_measurements = daily_data[51:]  # Second half of the day's measurements
+
+        # Find the depth at which the temperature gradient is maximum
+        max_gradient = 0
+        thermocline_depth = 0
+        for j in range(1, len(noon_measurements)):
+            depth_diff = noon_measurements[j][1] - noon_measurements[j-1][1]
+            temp_diff = noon_measurements[j][2] - noon_measurements[j-1][2]
+            if depth_diff != 0:
+                gradient = abs(temp_diff / depth_diff)
+                if gradient > max_gradient:
+                    max_gradient = gradient
+                    thermocline_depth = noon_measurements[j][1]
+
+        # Get the date for the current set of measurements
+        date_time_obj = daily_data[51][0]  # Take the first 12:00 measurement of the day for the date
+        date_str = str(date_time_obj.astype('datetime64[D]'))  # Convert to date-only string
+
+        # Append to the lists
+        thermocline_data.append([date_str, thermocline_depth])
+        thermocline_depths.append(thermocline_depth)
+
+    # Convert lists to numpy arrays
+    thermocline_data_array = np.array(thermocline_data, dtype=object)
+    thermocline_depths_array = np.array(thermocline_depths, dtype=float)
+
+    return thermocline_data_array, thermocline_depths_array
+
 
 
 # my_spm = spm_model("circle", 8, 8)
@@ -276,5 +327,12 @@ def csv_to_numpy(filename):
 #             pass
 #             break
 
-num_array = csv_to_numpy(run_flake_simulation(10,11,12,1,100))
-print(num_array.shape)
+filename = run_flake_simulation(20,25,30,1,250)
+flake_data = csv_to_numpy(filename)
+thermocline_data, thermocline_depths = calculate_thermocline(flake_data)
+print("====================")
+print(thermocline_data.shape)
+print(thermocline_data)
+print("====================")
+print(thermocline_depths.shape)
+print(thermocline_depths)

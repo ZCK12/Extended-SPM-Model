@@ -113,7 +113,7 @@ def run_flake_simulation(latitude, longitude, lakeDepth, extinctionCoefficient, 
     max_retries = 8  # 8 retries * 15 seconds = 2 minutes
     retry_interval = 15  # 15 seconds
     for i in range(max_retries):
-        csv_url = f"{ORIGIN_URL}/model/download-t-map-data??id={result_id}"
+        csv_url = f"{ORIGIN_URL}/model/download-t-map-data?id={result_id}"
         csv_response = requests.get(csv_url)
 
         # Checks how the server responded to file query
@@ -134,7 +134,7 @@ def run_flake_simulation(latitude, longitude, lakeDepth, extinctionCoefficient, 
             return csv_filename
 
         # If the file is not ready, the server will respond with a 404 code.
-        elif csv_response.status_code == 404:
+        elif csv_response.status_code in (404, 500):
             if i < max_retries - 1:
                 print("File not ready yet. Retrying in 15 seconds...")
                 time.sleep(retry_interval)
