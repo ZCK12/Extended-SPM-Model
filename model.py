@@ -57,10 +57,27 @@ class spm_model:
         }
 
 
-    def __init__(self, surface_boundary: Polygon | str, width: int, height: int, topple_height: int=4):
+    def __init__(self, surface_boundary: Polygon | str, width: int, height: int, latitude: float,
+                 longitude: float, lakeDepth: float, surfaceTemperature=9.44, meanTemperature=9.44,
+                 bottomTemperature=9.44, mixedLayerThickness=0, iceThickness=0, topple_height: int=4,
+                 extinctionCoefficient=1, verbose = True, flake_data_filepath_override = None):
+        
         self.width = width
         self.height = height
+        self.latitude = latitude
+        self.longitude = longitude
+        self.lakeDepth = lakeDepth
+        self.surfaceTemperature = surfaceTemperature
+        self.meanTemperature = meanTemperature
+        self.bottomTemperature = bottomTemperature
+        self.mixedLayerThickness = mixedLayerThickness
+        self.iceThickness = iceThickness
         self.topple_height = topple_height
+        self.extinctionCoefficient = extinctionCoefficient
+        self.verbose = verbose
+
+        # Extinction Coefficient can only take certain values.
+        assert self.extinctionCoefficient in [0.4, 1, 2, 4]
 
         # Type checking the surface_boundary variable
         if not isinstance(surface_boundary, (np.ndarray, str)):
@@ -97,6 +114,27 @@ class spm_model:
         # Now we can finally rasterise our simulation surface using the polygon path (with a 1 unit buffer zone)]
         # The spm_matrix is an ndarray of booleans that indicate whether a given cell within our simulation surface or not.
         self.raster_matrix = self.__rasterize_path(surface_path, self.width, self.height)
+
+        # We'll use the raster matrix to calculate the overall lake fetch
+        self.lake_fetch = self.__calculate_fetch(self.raster_matrix)
+
+        if flake_data_filepath_override == None:
+            # Query the FLake website for the thermocline data
+            filename = run_flake_simulation(self.latitude, self.longitude, self.lakeDepth, self.extinctionCoefficient,
+                                            self.lake_fetch, verbose = self.verbose)
+        else:
+            assert isinstance(flake_data_filepath_override, str), 'flake file path override must be string'
+            filename = flake_data_filepath_override
+
+        try:
+            # Convert the file to a numpy array
+            self.flake_data = csv_to_numpy(filename)
+        except Exception as e:
+            raise ValueError(f"Something went wrong converting the CSV to an array:\n{e.message}")
+
+        # Calculate the daily thermocline from the numpy array
+        self.thermocline_data, self.thermocline_depths = self.__calculate_thermocline(self.flake_data)
+
 
         # The cellular_matrix is used for running the Sand Pile Model, and contains the pile height in each cell.
         self.cellular_matrix = np.zeros((width, height), dtype=np.uint16)
@@ -159,6 +197,54 @@ class spm_model:
                     raster[x+1, y+1] = True
 
         return raster
+
+
+    @staticmethod
+    def __calculate_fetch(raster_matrix):
+        fetch_total = 0 # Total fetch is the summed matrix (1 grid sqaure = 1 sqm)
+        for y in range(raster_matrix.shape[1]):
+            for x in range(raster_matrix.shape[0]):
+                if self.raster_matrix[x, y]:
+                    fetch_total += 1
+
+        return fetch_total
+
+
+    @staticmethod
+    def __calculate_thermocline(flake_data):
+        # Assuming flake_data is sorted by date and time
+        thermocline_data = []
+        thermocline_depths = []
+
+        for i in range(0, len(flake_data), 102):  # 102 measurements per day
+            daily_data = flake_data[i:i+101] # Excluding erronious last day
+            noon_measurements = daily_data[51:]  # Second half of the day's measurements
+
+            # Find the depth at which the temperature gradient is maximum
+            max_gradient = 0
+            thermocline_depth = 0
+            for j in range(1, len(noon_measurements)):
+                depth_diff = noon_measurements[j][1] - noon_measurements[j-1][1]
+                temp_diff = noon_measurements[j][2] - noon_measurements[j-1][2]
+                if depth_diff != 0:
+                    gradient = abs(temp_diff / depth_diff)
+                    if gradient > max_gradient:
+                        max_gradient = gradient
+                        thermocline_depth = noon_measurements[j][1]
+
+            # Get the date for the current set of measurements
+            date_time_obj = daily_data[51][0]  # Take the first 12:00 measurement of the day for the date
+            date_str = str(date_time_obj.astype('datetime64[D]'))  # Convert to date-only string
+
+            # Append to the lists
+            thermocline_data.append([date_str, thermocline_depth])
+            thermocline_depths.append(thermocline_depth)
+
+        # Convert lists to numpy arrays
+        thermocline_data_array = np.array(thermocline_data, dtype=object)
+        thermocline_depths_array = np.array(thermocline_depths, dtype=float)
+
+        return thermocline_data_array, thermocline_depths_array
 
 
     def directional_size(self, azimuth: float):
@@ -269,40 +355,7 @@ def csv_to_numpy(filename):
 
 
 
-def calculate_thermocline(flake_data):
-    # Assuming flake_data is sorted by date and time
-    thermocline_data = []
-    thermocline_depths = []
 
-    for i in range(0, len(flake_data), 102):  # 102 measurements per day
-        daily_data = flake_data[i:i+101] # Excluding erronious last day
-        noon_measurements = daily_data[51:]  # Second half of the day's measurements
-
-        # Find the depth at which the temperature gradient is maximum
-        max_gradient = 0
-        thermocline_depth = 0
-        for j in range(1, len(noon_measurements)):
-            depth_diff = noon_measurements[j][1] - noon_measurements[j-1][1]
-            temp_diff = noon_measurements[j][2] - noon_measurements[j-1][2]
-            if depth_diff != 0:
-                gradient = abs(temp_diff / depth_diff)
-                if gradient > max_gradient:
-                    max_gradient = gradient
-                    thermocline_depth = noon_measurements[j][1]
-
-        # Get the date for the current set of measurements
-        date_time_obj = daily_data[51][0]  # Take the first 12:00 measurement of the day for the date
-        date_str = str(date_time_obj.astype('datetime64[D]'))  # Convert to date-only string
-
-        # Append to the lists
-        thermocline_data.append([date_str, thermocline_depth])
-        thermocline_depths.append(thermocline_depth)
-
-    # Convert lists to numpy arrays
-    thermocline_data_array = np.array(thermocline_data, dtype=object)
-    thermocline_depths_array = np.array(thermocline_depths, dtype=float)
-
-    return thermocline_data_array, thermocline_depths_array
 
 
 
@@ -327,12 +380,14 @@ def calculate_thermocline(flake_data):
 #             pass
 #             break
 
-filename = run_flake_simulation(20,25,30,1,250)
-flake_data = csv_to_numpy(filename)
-thermocline_data, thermocline_depths = calculate_thermocline(flake_data)
+#filename = run_flake_simulation(20,25,30,1,250)
+#flake_data = csv_to_numpy(filename)
+#thermocline_data, thermocline_depths = calculate_thermocline(flake_data)
+
+my_model = spm_model("circle", 105, 125, -37.8136, 144.9631, 21)
 print("====================")
-print(thermocline_data.shape)
-print(thermocline_data)
+print(my_model.thermocline_data.shape)
+print(my_model.thermocline_data)
 print("====================")
-print(thermocline_depths.shape)
-print(thermocline_depths)
+print(my_model.thermocline_depths.shape)
+print(my_model.thermocline_depths)
