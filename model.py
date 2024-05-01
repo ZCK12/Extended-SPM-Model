@@ -14,7 +14,7 @@ from flake_interface import run_flake_simulation
 
 # Polygon object used to define boundary of the model surface
 # The polygon object should be an array of tuples shape (N,2) with
-# coordinates that define a closed polygon in R2 space.
+# coordinates that define a closed polygon in (R+ x R+) space.
 Polygon = NewType("Polygon", np.ndarray[np.uint16])
 
 
